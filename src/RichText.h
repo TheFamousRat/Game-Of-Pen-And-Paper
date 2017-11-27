@@ -1,0 +1,6 @@
+#ifndef RICHTEXT_H_INCLUDED
+#define RICHTEXT_H_INCLUDED
+
+
+
+#endif // RICHTEXT_H_INCLUDED

@@ -1,0 +1,14 @@
+YEPfinir les constructeurs de Dummy,
+YEPimplémenter une gestion des évènements statiques dans Widget
+YEPretirer la totalité des sf::RectangleShape encore présents, et les remplacer par des Dummy
+YEPscinder la class InputValue et rendre ses enfants fonctionnels (une pour le texte, une pour les valeurs entières, une pour les valeurs flotantes)
+YEPajouter le support de l'unicode dans la classe InputValue
+YEPrendre fonctionnelle la méthode changeValue
+YEPajouter un curseur dans les classes InputValue #half way done, must still add the cursor (visually), and a vertical transltranslation
+YEPRendre la classe Container correctement récursive, de manière à pouvoir avoir un Widget dans un Container dans un Container etc.
+
+<rendre la classe Slider fonctionnelle
+ajouter un Dummy, et de possibles Slider, à la classe Container
+ajouter une classe de liste déroulante
+YEPrendre la classe Container visible, si désiré. Le cas échéant, mettre en place un système de Sliders pour naviguer à l'intérieur
+ajouter la possibilité et un automatisme pour supprimer des textures/polices inutilisées
