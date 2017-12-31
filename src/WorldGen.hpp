@@ -11,6 +11,7 @@
 #define TEMPERATURE_DRAW_MIN -80
 #define TEMPERATURE_DRAW_MAX 30
 #define MY_PI 3.1415926535897932384626433832795028841971
+#define SQRT2_2 0.7071067812 //sqrt(2)/2
 
 /**
 Month numbers :
@@ -160,7 +161,7 @@ struct pixelData{
     unsigned int numberOfparticle;          //On the case
     float averageparticleTemp;              //In °C
     float distanceFromSea;                  //In case
-    //float windStrength;
+    float windStrength;                     //Just the norm of windDirection
     sf::Vector2f windDirection;
     float precipitation;
     float cloudVolume;
@@ -173,11 +174,11 @@ struct pixelData{
 class WorldMap{
 public:
     //Constructors/Destructor
-    WorldMap(sf::Vector2u targetResolution);
+    WorldMap(sf::RenderWindow& window, sf::Vector2u targetResolution);
     ~WorldMap() {};
 
     //Update functions
-    void updateMap(float numberOfMonthsElapsed);
+    void updateMap(sf::RenderWindow& window, float numberOfMonthsElapsed);
 
     //Graphical functions
     void saveAltitudeMap(std::string const& filename);
@@ -222,10 +223,12 @@ private:
     void generatePixelTemperature(float monthNumber = 4.0f);
     void generatePixelAtmosphericSurfacePressure();//Also generated air density
     void generatePixelWinds(float monthNumber = 4.0f);
-    void generatePixelPrecipitation(float monthNumber = 4.0f);
+    void generatePixelPrecipitation(sf::RenderWindow& window, float monthNumber = 4.0f);
     void generateClimates();
+    void updatePhi(float monthNumber = 4.0f); //Updates the latitude for which a certain pixel has its values calculated
 
     void generateDistanceFromSea();
+    float givePositionInArray(int x, int y) const;
 
 private:
     std::vector<pixelData> pixelDataArray;

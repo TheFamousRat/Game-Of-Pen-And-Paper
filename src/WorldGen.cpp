@@ -9,8 +9,6 @@ std::vector<gradientComponent> gradientComponent::blackWhiteGradient;
 
 void genMap(std::string filename)
 {
-    WorldMap world(sf::Vector2u(1000,500));
-
     gradientComponent::standardGradient.push_back(gradientComponent(sf::Color(45,45,45),0.0));
     gradientComponent::standardGradient.push_back(gradientComponent(sf::Color(255,255,255),0.148249));
     gradientComponent::standardGradient.push_back(gradientComponent(sf::Color(103,6,190),0.326906));
@@ -26,15 +24,18 @@ void genMap(std::string filename)
     gradientComponent::blackWhiteGradient.push_back(gradientComponent(sf::Color(0,0,0),0.0));
     gradientComponent::blackWhiteGradient.push_back(gradientComponent(sf::Color(255,255,255),1.0));
 
-    sf::Image tempImg;
-    sf::Texture tempText;
-    sf::Sprite tempSprt;
+    unsigned int canvasWidth(500);
+    unsigned int canvasHeight(250);
 
-    sf::RenderWindow window(sf::VideoMode(world.getCanvasWidth(), world.getCanvasHeight()), "Shit");
+    sf::RenderWindow window(sf::VideoMode(canvasWidth, canvasHeight), "Shit");
 
-    sf::RenderWindow guiWindow(sf::VideoMode(600, 320), "Parameters");
+    WorldMap world(window, sf::Vector2u(canvasWidth,canvasHeight));
+
+
+
+    /*sf::RenderWindow guiWindow(sf::VideoMode(600, 320), "Parameters");
     tgui::Gui gui(guiWindow);
-    initGui(gui);
+    initGui(gui);*/
 
     sf::Event event;
     sf::Clock timer;
@@ -60,27 +61,28 @@ void genMap(std::string filename)
                 window.close();
         }
 
-        while (guiWindow.pollEvent(event))
+        /*while (guiWindow.pollEvent(event))
         {
             gui.handleEvent(event);
-        }
+        }*/
 
-        world.updateMap((float)0.1f);
+        world.updateMap(window, (float)1.0f);
 
         window.clear();
 
         //world.drawTemperatureMap(window);
-        world.drawWindsSpeed(window);
+        //world.drawWindsSpeed(window);
         //world.drawDistanceFromSea(window);
         //world.drawOceans(window);
 
-        //world.drawPrecipitation(window);
+        world.drawPrecipitation(window);
+        //world.drawOceans(window);
         //world.drawWinds(window);
 
         window.display();
 
-        gui.draw();
-        guiWindow.display();
+        //gui.draw();
+        //guiWindow.display();
 
     }
 
@@ -91,7 +93,7 @@ void genMap(std::string filename)
 
 }
 
-WorldMap::WorldMap(sf::Vector2u targetResolution)
+WorldMap::WorldMap(sf::RenderWindow& window, sf::Vector2u targetResolution)
 {
     maxHeight = 8848.0f;
     minHeight = 0.0f;
@@ -129,23 +131,29 @@ WorldMap::WorldMap(sf::Vector2u targetResolution)
         exit(-1);
     }
 
+    vertices.resize(pixelCanvasWidth * pixelCanvasHeight);
+
+    updatePhi(lastMonthNumber);
+
     generatePixelTemperature(lastMonthNumber);
     generatePixelAtmosphericSurfacePressure();
     generatePixelWinds(lastMonthNumber);
-    generatePixelPrecipitation();
+    generatePixelPrecipitation(window, lastMonthNumber);
     generateClimates();
 
-    vertices.resize(pixelCanvasWidth * pixelCanvasHeight);
+
 }
 
-void WorldMap::updateMap(float numberOfMonthsElapsed)
+void WorldMap::updateMap(sf::RenderWindow& window, float numberOfMonthsElapsed)
 {
     lastMonthNumber += numberOfMonthsElapsed;
+
+    updatePhi(lastMonthNumber);
 
     generatePixelTemperature(lastMonthNumber);
     //generatePixelAtmosphericSurfacePressure();
     generatePixelWinds(lastMonthNumber);
-    generatePixelPrecipitation(lastMonthNumber);
+    generatePixelPrecipitation(window, lastMonthNumber);
 }
 
 bool WorldMap::createHeightMap(sf::Vector2u targetSize)
@@ -345,6 +353,31 @@ void WorldMap::generateDistanceFromSea()
     } while (!done);
 }
 
+float WorldMap::givePositionInArray(int x, int y) const
+{
+    while (x < 0)
+    {
+        x += pixelCanvasWidth;
+    }
+    x = x%pixelCanvasWidth;
+
+    while (y < 0 || y > pixelCanvasHeight - 1)
+    {
+        if (y < 0)
+        {
+            y = -y - 1;
+            x = (x + pixelCanvasWidth/2)%pixelCanvasWidth;
+        }
+        else if (y > pixelCanvasHeight - 1)
+        {
+            y = -y + 1;
+            x = (x + pixelCanvasWidth/2)%pixelCanvasWidth;
+        }
+    }
+
+    return x*pixelCanvasHeight+y;
+}
+
 sf::Color colorFromBoundedGradient(float value, float minValue, float maxValue, std::vector<gradientComponent> gradient)
 {
     sf::Color ret(sf::Color(255,255,255,255));
@@ -395,7 +428,7 @@ void WorldMap::generatePixelTemperature(float monthNumber)
     {
         for (int y(0) ; y < pixelCanvasHeight ; y++)
         {
-            phi =  pixelDataArray[x*pixelCanvasHeight+y].latitude -180 *(0.08*std::sin((3.1415926535897*(monthNumber-4.0f))/6.0f));
+            phi =  pixelDataArray[x*pixelCanvasHeight+y].phi;
             phi2 = phi * phi;
 
             pixelDataArray[x*pixelCanvasHeight+y].temperatureLatitude = 2.653 * (1e-7) * (phi2*phi2)
@@ -487,7 +520,7 @@ void WorldMap::generatePixelWinds(float monthNumber)
     {
         for (int y(0) ; y < pixelCanvasHeight ; y++)
         {
-            phi =  pixelDataArray[x*pixelCanvasHeight+y].latitude -180 *(0.08*std::sin((3.1415926535897*(monthNumber-4.0f))/6.0f));
+            phi =  pixelDataArray[x*pixelCanvasHeight+y].phi;
 
             if (phi > equator + subpolarLows)//In the artic circle, from Fmax at 90 to 0 at 60
             {
@@ -546,41 +579,152 @@ void WorldMap::generatePixelWinds(float monthNumber)
                 pixelDataArray[x*pixelCanvasHeight+y].windDirection.x *= 1.0f - reductionCoef;
                 pixelDataArray[x*pixelCanvasHeight+y].windDirection.y *= 1.0f - reductionCoef;
             }
+
+            pixelDataArray[x*pixelCanvasHeight+y].windStrength = std::sqrt((pixelDataArray[x*pixelCanvasHeight+y].windDirection.x*pixelDataArray[x*pixelCanvasHeight+y].windDirection.x)
+                                                                +(pixelDataArray[x*pixelCanvasHeight+y].windDirection.y*pixelDataArray[x*pixelCanvasHeight+y].windDirection.y));
         }
     }
 }
 
-void WorldMap::generatePixelPrecipitation(float monthNumber)
+void WorldMap::generatePixelPrecipitation(sf::RenderWindow& window, float monthNumber)
 {
-    float initialCloudQuantity(1.0f);
     float emptyCloudQuantity(0.0f);
     float phi(0.0f);
-    float cloudXPos(0.0f);
-    float cloudYPos(0.0f);
-    float rainFlow(2.0f);
+    float rainFlow(100.0f);
+    float timeInterval(0.1f);
+
+    sf::Clock sleeper;
+    sleeper.restart();
+    float sleepTimeSeconds(0.5f);
+
+    float cloudVolume(0.0f);
+    float movementTime(0.0f);
+    float leaveTimeX(0.0f);
+    float leaveTimeY(0.0f);
+    float surfaces[9][2];
+    float x_c1, x_c2, x_c3;
+    float y_c1, y_c2, y_c3;
+    float cellInArray[9];
+    sf::Vector2f totalWind(0.0f, 0.0f);
+    sf::Vector2f startingPos(0.0f, 0.0f);
+    sf::Vector2f nextPos(0.0f, 0.0f);
 
     for (int x(0) ; x < pixelCanvasWidth ; x++)
     {
         for (int y(0) ; y < pixelCanvasHeight ; y++)
         {
+            pixelDataArray[x*pixelCanvasHeight+y].precipitation = 0.0f;
+
             //If the cell is water with land near it, we add rain
             if (pixelDataArray[x*pixelCanvasHeight+y].isWater)
             {
-                phi = pixelDataArray[x*pixelCanvasHeight+y].latitude -180 *(0.08*std::sin((3.1415926535897*(monthNumber-4.0f))/6.0f));
+                phi = pixelDataArray[x*pixelCanvasHeight+y].phi;
                 phi = std::min(80.0f,std::max(-80.0f, phi));
                 pixelDataArray[x*pixelCanvasHeight+y].cloudVolume = 8.6844e-6 * phi * phi * phi * phi +
                                                                     -3.154e-4 * phi * phi * phi +
                                                                     -0.119687 * phi * phi +
                                                                     2.6927948 * phi +
                                                                     542.579755;
-                //We know begin simulating the cloud
-                cloudXPos = x;
-                cloudYPos = y;
+
+                cloudVolume = pixelDataArray[x*pixelCanvasHeight+y].cloudVolume;
+                startingPos.x = x;
+                startingPos.y = y;
+
+                do
+                {
+                    movementTime = 0.0f;
+                    //0)Determine every cell
+
+                    //1)Calculate surfaces before movement
+                    x_c1 = std::max(0.0f, std::ceil(startingPos.x) - startingPos.x);
+                    x_c2 = std::min(1.0f, std::max(0.0f, startingPos.x + 1.0f - std::ceil(startingPos.x))) - std::min(1.0f, std::max(0.0f, startingPos.x - std::ceil(startingPos.x)));
+                    x_c3 = std::min(1.0f, std::max(0.0f, startingPos.x - std::ceil(startingPos.x)));
+                    y_c1 = std::max(0.0f, std::ceil(startingPos.y) - startingPos.y);
+                    y_c2 = std::min(1.0f, std::max(0.0f, startingPos.y + 1.0f - std::ceil(startingPos.y))) - std::min(1.0f, std::max(0.0f, startingPos.y - std::ceil(startingPos.y)));
+                    y_c3 = std::min(1.0f, std::max(0.0f, startingPos.y - std::ceil(startingPos.y)));
+                    surfaces[0][0] = x_c1 * y_c1;
+                    surfaces[1][0] = x_c2 * y_c1;
+                    surfaces[2][0] = x_c3 * y_c1;
+                    surfaces[3][0] = x_c1 * y_c2;
+                    surfaces[4][0] = x_c2 * y_c2;
+                    surfaces[5][0] = x_c3 * y_c2;
+                    surfaces[6][0] = x_c1 * y_c3;
+                    surfaces[7][0] = x_c2 * y_c3;
+                    surfaces[8][0] = x_c3 * y_c3;
+
+                    //2)Determine the wind
 
 
+                    //3)Determine the duration of the movement, movementTime
+
+                    //4)update cloudX and cloudY. If they didn't change, the cloud rain everything on his cell and is deleted
+                    nextPos.x = startingPos.x + movementTime * totalWind.x;
+                    nextPos.y = startingPos.y + movementTime * totalWind.y;
+
+                    //5)Calculate surfaces after movement
+                    x_c1 = std::max(0.0f, std::ceil(startingPos.x) - nextPos.x);
+                    x_c2 = std::min(1.0f, std::max(0.0f, nextPos.x + 1.0f - std::ceil(startingPos.x))) - std::min(1.0f, std::max(0.0f, nextPos.x - std::ceil(startingPos.x)));
+                    x_c3 = std::min(1.0f, std::max(0.0f, nextPos.x - std::ceil(startingPos.x)));
+                    y_c1 = std::max(0.0f, std::ceil(startingPos.y) - nextPos.y);
+                    y_c2 = std::min(1.0f, std::max(0.0f, nextPos.y + 1.0f - std::ceil(startingPos.y))) - std::min(1.0f, std::max(0.0f, nextPos.y - std::ceil(startingPos.y)));
+                    y_c3 = std::min(1.0f, std::max(0.0f, nextPos.y - std::ceil(startingPos.y)));
+                    surfaces[0][1] = x_c1 * y_c1;
+                    surfaces[1][1] = x_c2 * y_c1;
+                    surfaces[2][1] = x_c3 * y_c1;
+                    surfaces[3][1] = x_c1 * y_c2;
+                    surfaces[4][1] = x_c2 * y_c2;
+                    surfaces[5][1] = x_c3 * y_c2;
+                    surfaces[6][1] = x_c1 * y_c3;
+                    surfaces[7][1] = x_c2 * y_c3;
+                    surfaces[8][1] = x_c3 * y_c3;
+
+                    //6)Add each one of the four areas i rain quantity = ((surfaces[i][0] + surfaces[i][1])/2) * movementTime * rainFlow;
+
+                    //7)cloudVolume -=  movementTime * rainFlow;
+                    cloudVolume -= movementTime * rainFlow;
+
+                    //8)Repeat
+                    startingPos.x = nextPos.x;
+                    startingPos.y = nextPos.y;
+
+
+                } while (cloudVolume > emptyCloudQuantity);
+            }
+            else
+            {
+                pixelDataArray[x*pixelCanvasHeight+y].cloudVolume = emptyCloudQuantity;
             }
         }
     }
+
+    bool done(false);
+
+    do
+    {
+        done = true;
+        for (int x(0) ; x < pixelCanvasWidth ; x++)
+        {
+            for (int y(0) ; y < pixelCanvasHeight ; y++)
+            {
+                if (pixelDataArray[x*pixelCanvasHeight+y].cloudVolume != emptyCloudQuantity && pixelDataArray[x*pixelCanvasHeight+y].isWater)
+                {
+                    if (pixelDataArray[x*pixelCanvasHeight+y].windStrength > 0.2f)
+                    {
+                        done = false;
+
+
+                    }
+                    else //Cloud slow enough to consider that all the rain has fallen on the one cell it was on
+                    {
+                        pixelDataArray[x*pixelCanvasHeight+y].cloudVolume = emptyCloudQuantity;
+                    }
+                }
+            }
+        }
+
+        while (sleeper.getElapsedTime().asSeconds() < sleepTimeSeconds);
+
+    } while (!done);
 
     //We determine minimum and maximum precipitation the map
     minPrecipitation = pixelDataArray[0].precipitation;
@@ -741,6 +885,17 @@ void WorldMap::generateClimates()
                 pixelDataArray[x*pixelCanvasHeight+y].climateCode.thirdLetter = heatLevel::no;
             }
 
+        }
+    }
+}
+
+void WorldMap::updatePhi(float monthNumber)
+{
+    for (int x(0) ; x < pixelCanvasWidth ; x++)
+    {
+        for (int y(0) ; y < pixelCanvasHeight ; y++)
+        {
+            pixelDataArray[x*pixelCanvasHeight+y].phi =  pixelDataArray[x*pixelCanvasHeight+y].latitude -180 *(0.08*std::sin((3.1415926535897*(monthNumber-4.0f))/6.0f));
         }
     }
 }
@@ -955,10 +1110,8 @@ void WorldMap::drawWindsSpeed(sf::RenderTarget& target)
     {
         for (int y(0) ; y < pixelCanvasHeight ; y++)
         {
-            windSpeed = std::sqrt((pixelDataArray[x*pixelCanvasHeight+y].windDirection.x*pixelDataArray[x*pixelCanvasHeight+y].windDirection.x)
-                        +(pixelDataArray[x*pixelCanvasHeight+y].windDirection.y*pixelDataArray[x*pixelCanvasHeight+y].windDirection.y));
 
-            vertices[x*pixelCanvasHeight+y] = (sf::Vertex(sf::Vector2f(x, y), colorFromBoundedGradient(windSpeed, 0,15, gradientComponent::blackWhiteGradient)));
+            vertices[x*pixelCanvasHeight+y] = (sf::Vertex(sf::Vector2f(x, y), colorFromBoundedGradient(pixelDataArray[x*pixelCanvasHeight+y].windStrength, 0,15, gradientComponent::blackWhiteGradient)));
         }
     }
 
